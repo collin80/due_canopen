@@ -46,6 +46,9 @@ public:
 	void sendPDOMessage(int, int, unsigned char *);
 	void sendSDOMessage(int, int, int, int, unsigned char *);
 	void receiveFrame(CAN_FRAME *);
+	void setStateChangeCallback(void (*cb)(CANOPEN_OPSTATE));
+	void setPDOCallback(void (*cb)(CAN_FRAME *));
+	void setSDOCallback(void (*cb)(CAN_FRAME *));
 
 protected:
 private:
@@ -53,6 +56,9 @@ private:
 	CANOPEN_OPSTATE opState;
 	int nodeID; //our ID
 	CANRaw *bus;
+	void (*cbStateChange)(CANOPEN_OPSTATE newState); //callback used when the network state changes
+	void (*cbGotPDOReq)(CAN_FRAME *); //callback used when we get a PDO request addressed to us
+	void (*cbGotSDOReq)(CAN_FRAME *); //callback used when we get a SDO request addressed to us.
 
 	void sendNMTMsg(int, int);
 };

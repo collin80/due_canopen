@@ -37,7 +37,7 @@ CANOPEN::CANOPEN(int busNum)
 	if (busNum == 0)
 	{
 		bus = &Can0;
-		Can0.attachCANInterrupt(trampolineCAN0);
+		Can0.attachCANInterrupt(trampolineCAN0); //automatically route all frames through this library
 	}
 	else 
 	{
@@ -71,26 +71,27 @@ void CANOPEN::begin(int speed = 250000, int id = 0x5F)
 	{
 		opState = PREOP;
 		bus->watchFor(id, 0x7F); //only match against our actual ID - but allow all the frame types in upper 4 bits
-		bus->watchFor(0, 0x7F); //Also allow through any message to ID 0 which is broadcast
+		bus->watchFor(0, 0x7F); //Also allow through any message to ID 0 which is broadcast (allows all upper bit functions)
 	}
+
 }
 
-void CANOPEN::setNodeStart(int id = 0)
+void CANOPEN::sendNodeStart(int id = 0)
 {
 	sendNMTMsg(id, 1);
 }
 
-void CANOPEN::setNodePreop(int id = 0)
+void CANOPEN::sendNodePreop(int id = 0)
 {
 	sendNMTMsg(id, 0x80);
 }
 
-void CANOPEN::setNodeReset(int id = 0)
+void CANOPEN::sendNodeReset(int id = 0)
 {
 	sendNMTMsg(id, 0x81);
 }
 
-void CANOPEN::setNodeStop(int id = 0)
+void CANOPEN::sendNodeStop(int id = 0)
 {
 	sendNMTMsg(id, 2);
 }
@@ -124,9 +125,9 @@ void CANOPEN::sendSDOMessage(int id, int idx, int subidx, int length, unsigned c
 {
 	id &= 0x7F;
 	CAN_FRAME frame;
-	frame.id = 0;
+	frame.id = 0x580 + nodeID;
 	if (length == 0) return;
-	if (length < 4)
+	if (length <= 4)
 	{
 		frame.length = 4 + length;
 		frame.data.byte[0] = 0x2F - ((length - 1) * 4); //kind of dumb the way this works...
@@ -141,6 +142,49 @@ void CANOPEN::sendSDOMessage(int id, int idx, int subidx, int length, unsigned c
 
 void CANOPEN::receiveFrame(CAN_FRAME *frame)
 {
+	if (frame->id == 0) //NMT message
+	{
+		if (frame->data.byte[1] != nodeID && frame->data.byte[1] != 0) return; //not for us.
+		switch (frame->data.byte[0])
+		{
+		case 1: //start this node
+			opState = OPERATIONAL;
+			break;
+		case 2: //stop this node
+			opState = STOPPED;
+			break;
+		case 0x80: //enter pre-op state
+			opState = PREOP;
+			break;
+		case 0x81: //reset this node
+			opState = PREOP; 
+			break;
+		}
+		if (cbStateChange != NULL) cbStateChange(opState);
+	}
+	if (frame->id > 0x17F && frame->id < 0x580)
+	{
+		if (cbGotPDOReq != NULL) cbGotPDOReq(frame);
+	}
+	if (frame->id == 0x600 + nodeID) //SDO request targetted to our ID
+	{
+		if (cbGotSDOReq != NULL) cbGotSDOReq(frame);
+	}
+}
+
+void CANOPEN::setStateChangeCallback(void (*cb)(CANOPEN_OPSTATE))
+{
+	cbStateChange = cb;
+}
+
+void CANOPEN::setPDOCallback(void (*cb)(CAN_FRAME *))
+{
+	cbGotPDOReq = cb;
+}
+
+void CANOPEN::setSDOCallback(void (*cb)(CAN_FRAME *))
+{
+	cbGotSDOReq = cb;
 }
 
 CANOPEN CanOpen0(0);
