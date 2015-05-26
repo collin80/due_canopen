@@ -38,6 +38,7 @@ public:
 	CANOPEN(int);
 	void setMasterMode();
 	void setSlaveMode();
+	void setHeartbeatInterval(uint32_t);
 	void begin(int, int);
 	void sendNodeStart(int);
 	void sendNodePreop(int);
@@ -45,7 +46,9 @@ public:
 	void sendNodeStop(int);
 	void sendPDOMessage(int, int, unsigned char *);
 	void sendSDOMessage(int, int, int, int, unsigned char *);
+	void sendHeartbeat();
 	void receiveFrame(CAN_FRAME *);
+	void loop();
 	void setStateChangeCallback(void (*cb)(CANOPEN_OPSTATE));
 	void setPDOCallback(void (*cb)(CAN_FRAME *));
 	void setSDOCallback(void (*cb)(CAN_FRAME *));
@@ -59,6 +62,8 @@ private:
 	void (*cbStateChange)(CANOPEN_OPSTATE newState); //callback used when the network state changes
 	void (*cbGotPDOReq)(CAN_FRAME *); //callback used when we get a PDO request addressed to us
 	void (*cbGotSDOReq)(CAN_FRAME *); //callback used when we get a SDO request addressed to us.
+	uint32_t heartbeatInterval; //in milliseconds
+	uint32_t lastHeartbeat;
 
 	void sendNMTMsg(int, int);
 };

@@ -69,9 +69,10 @@ void CANOPEN::begin(int speed = 250000, int id = 0x5F)
 	}
 	else
 	{
-		opState = PREOP;
+		opState = BOOTUP;
 		bus->watchFor(id, 0x7F); //only match against our actual ID - but allow all the frame types in upper 4 bits
 		bus->watchFor(0, 0x7F); //Also allow through any message to ID 0 which is broadcast (allows all upper bit functions)
+		sendHeartbeat();
 	}
 
 }
@@ -185,6 +186,48 @@ void CANOPEN::setPDOCallback(void (*cb)(CAN_FRAME *))
 void CANOPEN::setSDOCallback(void (*cb)(CAN_FRAME *))
 {
 	cbGotSDOReq = cb;
+}
+
+void CANOPEN::setHeartbeatInterval(uint32_t interval)
+{
+	heartbeatInterval = interval;
+}
+
+void CANOPEN::loop()
+{
+	if ((millis() - lastHeartbeat) >= heartbeatInterval)
+	{
+		sendHeartbeat();
+	}
+	if (opState == BOOTUP)
+	{
+		opState = PREOP;
+	}
+}
+
+void CANOPEN::sendHeartbeat()
+{
+	CAN_FRAME frame;
+	frame.id = 0x700 + nodeID;
+	frame.length = 1;
+	switch (opState)
+	{
+	case OPERATIONAL:
+		frame.data.byte[0] = 5;
+		break;
+	case STOPPED:
+		frame.data.byte[0] = 4;
+		break;
+	case PREOP:
+		frame.data.byte[0] = 0x7F;
+		break;
+	case BOOTUP:
+		frame.data.byte[0] = 0;
+		break;
+	}
+	
+	bus->sendFrame(frame);
+	lastHeartbeat = millis();
 }
 
 CANOPEN CanOpen0(0);
