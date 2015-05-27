@@ -103,7 +103,7 @@ void CANOPEN::sendNMTMsg(int id, int cmd)
 	id &= 0x7F;
 	CAN_FRAME frame;
 	frame.id = 0;
-	frame.length = 8;
+	frame.length = 8; //might want to set length to 2. Some specs seem to indicate this value
 	frame.data.byte[0] = cmd;
 	frame.data.byte[1] = id;
 	//the rest don't matter
@@ -122,27 +122,51 @@ void CANOPEN::sendPDOMessage(int id, int length, unsigned char *data)
 	bus->sendFrame(frame);
 }
 
-void CANOPEN::sendSDOMessage(int id, int idx, int subidx, int length, unsigned char *data)
+void CANOPEN::sendSDOResponse(SDO_FRAME *sframe)
 {
-	id &= 0x7F;
+	sframe->nodeID &= 0x7f;
 	CAN_FRAME frame;
-	frame.id = 0x580 + nodeID;
-	if (length == 0) return;
-	if (length <= 4)
+	frame.length = 8;
+	frame.id = 0x580 + sframe->nodeID;
+	if (sframe->dataLength <= 4)
 	{
-		frame.length = 4 + length;
-		frame.data.byte[0] = 0x2F - ((length - 1) * 4); //kind of dumb the way this works...
-		frame.data.byte[1] = idx & 0xFF;
-		frame.data.byte[2] = idx >> 8;
-		frame.data.byte[3] = subidx;
-		for (int x = 0; x < length; x++) frame.data.byte[4 + x] = data[x];
+		frame.data.byte[0] = sframe->cmd;
+		if (sframe->dataLength > 0) //responding with data
+		{
+			frame.data.byte[0] |= 0x0F - ((sframe->dataLength - 1) * 4); 
+		}
+		frame.data.byte[1] = sframe->index & 0xFF;
+		frame.data.byte[2] = sframe->index >> 8;
+		frame.data.byte[3] = sframe->subIndex;
+		for (int x = 0; x < sframe->dataLength; x++) frame.data.byte[4 + x] = sframe->data[x];
 		bus->sendFrame(frame);
 	}
+}
 
+void CANOPEN::sendSDORequest(SDO_FRAME *sframe)
+{
+	sframe->nodeID &= 0x7F;
+	CAN_FRAME frame;
+	frame.length = 8;
+	frame.id = 0x600 + sframe->nodeID;
+	if (sframe->dataLength <= 4)
+	{
+		frame.data.byte[0] = sframe->cmd;
+		if (sframe->dataLength > 0) //request to write data
+		{
+			frame.data.byte[0] |= 0x0F - ((sframe->dataLength - 1) * 4); //kind of dumb the way this works...
+		}
+		frame.data.byte[1] = sframe->index & 0xFF;
+		frame.data.byte[2] = sframe->index >> 8;
+		frame.data.byte[3] = sframe->subIndex;
+		for (int x = 0; x < sframe->dataLength; x++) frame.data.byte[4 + x] = sframe->data[x];
+		bus->sendFrame(frame);
+	}
 }
 
 void CANOPEN::receiveFrame(CAN_FRAME *frame)
 {
+	SDO_FRAME sframe;
 	if (frame->id == 0) //NMT message
 	{
 		if (frame->data.byte[1] != nodeID && frame->data.byte[1] != 0) return; //not for us.
@@ -165,11 +189,47 @@ void CANOPEN::receiveFrame(CAN_FRAME *frame)
 	}
 	if (frame->id > 0x17F && frame->id < 0x580)
 	{
-		if (cbGotPDOReq != NULL) cbGotPDOReq(frame);
+		if (cbGotPDOMsg != NULL) cbGotPDOMsg(frame);
 	}
 	if (frame->id == 0x600 + nodeID) //SDO request targetted to our ID
 	{
-		if (cbGotSDOReq != NULL) cbGotSDOReq(frame);
+		if (cbGotSDOReq != NULL) 
+		{
+			sframe.nodeID = nodeID;
+			sframe.index = frame->data.byte[1] + (frame->data.byte[2] * 256);
+			sframe.subIndex = frame->data.byte[3];
+			sframe.cmd = (SDO_COMMAND)(frame->data.byte[0] & 0xF0);
+			
+			if ((frame->data.byte[0] != 0x40) && (frame->data.byte[0] != 0x60))
+			{
+				sframe.dataLength = (3 - ((frame->data.byte[0] & 0xC) >> 2)) + 1;			
+			}
+			else sframe.dataLength = 0;
+
+			for (int x = 0; x < sframe.dataLength; x++) sframe.data[x] = frame->data.byte[4 + x];
+			
+			cbGotSDOReq(&sframe);
+		}
+	}
+	if (frame->id == 0x580 + nodeID) //SDO reply to our ID
+	{
+		if (cbGotSDOReply != NULL)
+		{
+			sframe.nodeID = nodeID;
+			sframe.index = frame->data.byte[1] + (frame->data.byte[2] * 256);
+			sframe.subIndex = frame->data.byte[3];
+			sframe.cmd = (SDO_COMMAND)(frame->data.byte[0] & 0xF0);
+			
+			if ((frame->data.byte[0] != 0x40) && (frame->data.byte[0] != 0x60))
+			{
+				sframe.dataLength = (3 - ((frame->data.byte[0] & 0xC) >> 2)) + 1;			
+			}
+			else sframe.dataLength = 0;
+
+			for (int x = 0; x < sframe.dataLength; x++) sframe.data[x] = frame->data.byte[4 + x];
+
+			cbGotSDOReply(&sframe);
+		}
 	}
 }
 
@@ -180,12 +240,17 @@ void CANOPEN::setStateChangeCallback(void (*cb)(CANOPEN_OPSTATE))
 
 void CANOPEN::setPDOCallback(void (*cb)(CAN_FRAME *))
 {
-	cbGotPDOReq = cb;
+	cbGotPDOMsg = cb;
 }
 
-void CANOPEN::setSDOCallback(void (*cb)(CAN_FRAME *))
+void CANOPEN::setSDOReqCallback(void (*cb)(SDO_FRAME *))
 {
 	cbGotSDOReq = cb;
+}
+
+void CANOPEN::setSDOReplyCallback(void (*cb)(SDO_FRAME *))
+{
+	cbGotSDOReply = cb;
 }
 
 void CANOPEN::setHeartbeatInterval(uint32_t interval)

@@ -22,20 +22,23 @@ void onPDOReceive(CAN_FRAME *frame)
 	Serial.println();
 }
 
-void onSDOReceive(CAN_FRAME *frame)
+void onSDORxRequest(SDO_FRAME *frame)
 {
-	Serial.println("Got SDO frame.");
-	Serial.print("Operation byte: ");
-	Serial.println(frame->data.byte[0]);
-	Serial.print("Index byte 1: ");
-	Serial.println(frame->data.byte[1]);
-	Serial.print("Index Byte 2: ");
-	Serial.println(frame->data.byte[2]);
-	Serial.print("Subindex Byte: ");
-	Serial.println(frame->data.byte[3]);
+	Serial.println("Got SDO request frame.");
+	Serial.print("Operation: ");
+	Serial.println(frame->cmd);
+	Serial.print("Index: ");
+	Serial.println(frame->index);
+	Serial.print("Sub Index: ");
+	Serial.println(frame->subIndex);
 	Serial.print("Data: ");
-	for (int x = 0; x < 4; x++) Serial.print(frame->data.byte[4+x]);
+	for (int x = 0; x < frame->dataLength; x++) Serial.print(frame->data[x]);
 	Serial.println();
+}
+
+void onSDORxResponse(SDO_FRAME *frame)
+{
+	onSDORxRequest(frame); //they can be the same in this example but the stub is here to show that they needn't be
 }
 
 
@@ -49,7 +52,8 @@ void setup()
   
   CanOpen0.setStateChangeCallback(onChangedState);
   CanOpen0.setPDOCallback(onPDOReceive);
-  CanOpen0.setSDOCallback(onSDOReceive);
+  CanOpen0.setSDOReqCallback(onSDORxRequest);
+  CanOpen0.setSDOReplyCallback(onSDORxResponse);
   
   CanOpen0.sendNodeReset(0); //reset all nodes
   delay(2000);

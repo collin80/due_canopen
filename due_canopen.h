@@ -30,6 +30,23 @@ enum CANOPEN_OPSTATE
 	STOPPED
 };
 
+enum SDO_COMMAND
+{
+	SDO_WRITE = 0x20,
+	SDO_READ = 0x40,
+	SDO_WRITEACK = 0x60,
+};
+
+struct SDO_FRAME
+{
+	uint8_t nodeID;
+	SDO_COMMAND cmd;
+	uint16_t index;
+	uint8_t subIndex;
+	uint8_t dataLength;
+	uint8_t data[4];
+};
+
 //CANOpen has slaves and a master. We've got to pick, are we the slave or the master.
 
 class CANOPEN
@@ -45,13 +62,15 @@ public:
 	void sendNodeReset(int);
 	void sendNodeStop(int);
 	void sendPDOMessage(int, int, unsigned char *);
-	void sendSDOMessage(int, int, int, int, unsigned char *);
+	void sendSDORequest(SDO_FRAME *frame);
+	void sendSDOResponse(SDO_FRAME *frame);
 	void sendHeartbeat();
 	void receiveFrame(CAN_FRAME *);
 	void loop();
 	void setStateChangeCallback(void (*cb)(CANOPEN_OPSTATE));
 	void setPDOCallback(void (*cb)(CAN_FRAME *));
-	void setSDOCallback(void (*cb)(CAN_FRAME *));
+	void setSDOReqCallback(void (*cb)(SDO_FRAME *));
+	void setSDOReplyCallback(void (*cb)(SDO_FRAME *));
 
 protected:
 private:
@@ -60,8 +79,9 @@ private:
 	int nodeID; //our ID
 	CANRaw *bus;
 	void (*cbStateChange)(CANOPEN_OPSTATE newState); //callback used when the network state changes
-	void (*cbGotPDOReq)(CAN_FRAME *); //callback used when we get a PDO request addressed to us
-	void (*cbGotSDOReq)(CAN_FRAME *); //callback used when we get a SDO request addressed to us.
+	void (*cbGotPDOMsg)(CAN_FRAME *); //callback used when we get a PDO request addressed to us
+	void (*cbGotSDOReq)(SDO_FRAME *); //callback used when we get a SDO request addressed to us.
+	void (*cbGotSDOReply)(SDO_FRAME *); //callback used when we get a SDO request addressed to us.
 	uint32_t heartbeatInterval; //in milliseconds
 	uint32_t lastHeartbeat;
 
