@@ -22,6 +22,8 @@
 #include <Arduino.h>
 #include <due_can.h>  //relies on due_can for hardware access
 
+const int MAX_DEVICES = 6;
+
 enum CANOPEN_OPSTATE
 {
 	BOOTUP,
@@ -56,6 +58,7 @@ public:
 	void setMasterMode();
 	void setSlaveMode();
 	void setHeartbeatInterval(uint32_t);
+	bool isInitialized();
 	void begin(int, int);
 	void sendNodeStart(int);
 	void sendNodePreop(int);
@@ -75,13 +78,19 @@ public:
 protected:
 private:
 	bool isMaster;
+	bool bInitialized; //has a device already got this channel set up?
 	CANOPEN_OPSTATE opState;
 	int nodeID; //our ID
 	CANRaw *bus;
-	void (*cbStateChange)(CANOPEN_OPSTATE newState); //callback used when the network state changes
-	void (*cbGotPDOMsg)(CAN_FRAME *); //callback used when we get a PDO request addressed to us
-	void (*cbGotSDOReq)(SDO_FRAME *); //callback used when we get a SDO request addressed to us.
-	void (*cbGotSDOReply)(SDO_FRAME *); //callback used when we get a SDO request addressed to us.
+	void (*cbStateChange[MAX_DEVICES])(CANOPEN_OPSTATE newState); //callback used when the network state changes
+	void (*cbGotPDOMsg[MAX_DEVICES])(CAN_FRAME *); //callback used when we get a PDO request addressed to us
+	void (*cbGotSDOReq[MAX_DEVICES])(SDO_FRAME *); //callback used when we get a SDO request addressed to us.
+	void (*cbGotSDOReply[MAX_DEVICES])(SDO_FRAME *); //callback used when we get a SDO request addressed to us.
+	void sendStateChange(CANOPEN_OPSTATE newState);
+	void sendGotPDOMsg(CAN_FRAME *);
+	void sendGotSDOReq(SDO_FRAME *);
+	void sendGotSDOReply(SDO_FRAME *);
+
 	uint32_t heartbeatInterval; //in milliseconds
 	uint32_t lastHeartbeat;
 

@@ -44,6 +44,16 @@ CANOPEN::CANOPEN(int busNum)
 		bus = &Can1;
 		Can1.attachCANInterrupt(trampolineCAN1);
 	}
+
+	for (int x = 0; x < MAX_DEVICES; x++)
+	{
+		cbStateChange[x] = NULL;
+		cbGotPDOMsg[x] = NULL;
+		cbGotSDOReq[x] = NULL;
+		cbGotSDOReply[x] = NULL;	
+	}
+
+	bInitialized = false;
 }
 
 void CANOPEN::setMasterMode()
@@ -74,7 +84,12 @@ void CANOPEN::begin(int speed = 250000, int id = 0x5F)
 		bus->watchFor(0, 0x7F); //Also allow through any message to ID 0 which is broadcast (allows all upper bit functions)
 		sendHeartbeat();
 	}
+	bInitialized = true;
+}
 
+bool CANOPEN::isInitialized()
+{
+	return bInitialized;
 }
 
 void CANOPEN::sendNodeStart(int id = 0)
@@ -185,73 +200,141 @@ void CANOPEN::receiveFrame(CAN_FRAME *frame)
 			opState = PREOP; 
 			break;
 		}
-		if (cbStateChange != NULL) cbStateChange(opState);
+		sendStateChange(opState);
 	}
 	if (frame->id > 0x17F && frame->id < 0x580)
 	{
-		if (cbGotPDOMsg != NULL) cbGotPDOMsg(frame);
+		sendGotPDOMsg(frame);
 	}
 	if (frame->id == 0x600 + nodeID) //SDO request targetted to our ID
 	{
-		if (cbGotSDOReq != NULL) 
+		sframe.nodeID = nodeID;
+		sframe.index = frame->data.byte[1] + (frame->data.byte[2] * 256);
+		sframe.subIndex = frame->data.byte[3];
+		sframe.cmd = (SDO_COMMAND)(frame->data.byte[0] & 0xF0);
+			
+		if ((frame->data.byte[0] != 0x40) && (frame->data.byte[0] != 0x60))
 		{
-			sframe.nodeID = nodeID;
-			sframe.index = frame->data.byte[1] + (frame->data.byte[2] * 256);
-			sframe.subIndex = frame->data.byte[3];
-			sframe.cmd = (SDO_COMMAND)(frame->data.byte[0] & 0xF0);
-			
-			if ((frame->data.byte[0] != 0x40) && (frame->data.byte[0] != 0x60))
-			{
-				sframe.dataLength = (3 - ((frame->data.byte[0] & 0xC) >> 2)) + 1;			
-			}
-			else sframe.dataLength = 0;
-
-			for (int x = 0; x < sframe.dataLength; x++) sframe.data[x] = frame->data.byte[4 + x];
-			
-			cbGotSDOReq(&sframe);
+			sframe.dataLength = (3 - ((frame->data.byte[0] & 0xC) >> 2)) + 1;			
 		}
+		else sframe.dataLength = 0;
+
+		for (int x = 0; x < sframe.dataLength; x++) sframe.data[x] = frame->data.byte[4 + x];
+			
+		sendGotSDOReq(&sframe);
+
 	}
 	if (frame->id == 0x580 + nodeID) //SDO reply to our ID
 	{
-		if (cbGotSDOReply != NULL)
-		{
-			sframe.nodeID = nodeID;
-			sframe.index = frame->data.byte[1] + (frame->data.byte[2] * 256);
-			sframe.subIndex = frame->data.byte[3];
-			sframe.cmd = (SDO_COMMAND)(frame->data.byte[0] & 0xF0);
+		sframe.nodeID = nodeID;
+		sframe.index = frame->data.byte[1] + (frame->data.byte[2] * 256);
+		sframe.subIndex = frame->data.byte[3];
+		sframe.cmd = (SDO_COMMAND)(frame->data.byte[0] & 0xF0);
 			
-			if ((frame->data.byte[0] != 0x40) && (frame->data.byte[0] != 0x60))
-			{
-				sframe.dataLength = (3 - ((frame->data.byte[0] & 0xC) >> 2)) + 1;			
-			}
-			else sframe.dataLength = 0;
-
-			for (int x = 0; x < sframe.dataLength; x++) sframe.data[x] = frame->data.byte[4 + x];
-
-			cbGotSDOReply(&sframe);
+		if ((frame->data.byte[0] != 0x40) && (frame->data.byte[0] != 0x60))
+		{
+			sframe.dataLength = (3 - ((frame->data.byte[0] & 0xC) >> 2)) + 1;			
 		}
+		else sframe.dataLength = 0;
+
+		for (int x = 0; x < sframe.dataLength; x++) sframe.data[x] = frame->data.byte[4 + x];
+
+		sendGotSDOReply(&sframe);
 	}
 }
 
 void CANOPEN::setStateChangeCallback(void (*cb)(CANOPEN_OPSTATE))
 {
-	cbStateChange = cb;
+	for (int x = 0; x < MAX_DEVICES; x++)
+	{
+		if (cbStateChange[x] == NULL)
+		{
+			cbStateChange[x] = cb;
+			return;
+		}
+	}
 }
 
 void CANOPEN::setPDOCallback(void (*cb)(CAN_FRAME *))
 {
-	cbGotPDOMsg = cb;
+	for (int x = 0; x < MAX_DEVICES; x++)
+	{
+		if (cbGotPDOMsg[x] == NULL)
+		{
+			cbGotPDOMsg[x] = cb;
+			return;
+		}
+	}
 }
 
 void CANOPEN::setSDOReqCallback(void (*cb)(SDO_FRAME *))
 {
-	cbGotSDOReq = cb;
+	for (int x = 0; x < MAX_DEVICES; x++)
+	{
+		if (cbGotSDOReq[x] == NULL)
+		{
+			cbGotSDOReq[x] = cb;
+			return;
+		}
+	}
 }
 
 void CANOPEN::setSDOReplyCallback(void (*cb)(SDO_FRAME *))
 {
-	cbGotSDOReply = cb;
+	for (int x = 0; x < MAX_DEVICES; x++)
+	{
+		if (cbGotSDOReply[x] == NULL)
+		{
+			cbGotSDOReply[x] = cb;
+			return;
+		}
+	}
 }
+
+void CANOPEN::sendStateChange(CANOPEN_OPSTATE newState)
+{
+	for (int x = 0; x < MAX_DEVICES; x++)
+	{
+		if (cbStateChange[x] != NULL)
+		{
+			cbStateChange[x](newState);						
+		}
+	}
+}
+
+void CANOPEN::sendGotPDOMsg(CAN_FRAME *frame)
+{
+	for (int x = 0; x < MAX_DEVICES; x++)
+	{
+		if (cbGotPDOMsg[x] != NULL)
+		{
+			cbGotPDOMsg[x](frame);						
+		}
+	}
+}
+
+void CANOPEN::sendGotSDOReq(SDO_FRAME *frame)
+{
+	for (int x = 0; x < MAX_DEVICES; x++)
+	{
+		if (cbGotSDOReq[x] != NULL)
+		{
+			cbGotSDOReq[x](frame);						
+		}
+	}
+}
+
+void CANOPEN::sendGotSDOReply(SDO_FRAME *frame)
+{
+	for (int x = 0; x < MAX_DEVICES; x++)
+	{
+		if (cbGotSDOReply[x] != NULL)
+		{
+			cbGotSDOReply[x](frame);						
+		}
+	}
+}
+
 
 void CANOPEN::setHeartbeatInterval(uint32_t interval)
 {
