@@ -152,6 +152,7 @@ void CANOPEN::sendSDOResponse(SDO_FRAME *sframe)
 	sframe->nodeID &= 0x7f;
 	CAN_FRAME frame;
 	frame.length = 8;
+	frame.extended = false;
 	frame.id = 0x580 + sframe->nodeID;
 	if (sframe->dataLength <= 4)
 	{
@@ -172,6 +173,7 @@ void CANOPEN::sendSDORequest(SDO_FRAME *sframe)
 {
 	sframe->nodeID &= 0x7F;
 	CAN_FRAME frame;
+	frame.extended = false;
 	frame.length = 8;
 	frame.id = 0x600 + sframe->nodeID;
 	if (sframe->dataLength <= 4)
