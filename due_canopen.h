@@ -82,6 +82,7 @@ private:
 	CANOPEN_OPSTATE opState;
 	int nodeID; //our ID
 	CANRaw *bus;
+	int busNum;
 	void (*cbStateChange[MAX_DEVICES])(CANOPEN_OPSTATE newState); //callback used when the network state changes
 	void (*cbGotPDOMsg[MAX_DEVICES])(CAN_FRAME *); //callback used when we get a PDO request addressed to us
 	void (*cbGotSDOReq[MAX_DEVICES])(SDO_FRAME *); //callback used when we get a SDO request addressed to us.

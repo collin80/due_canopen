@@ -29,20 +29,20 @@ void trampolineCAN1(CAN_FRAME *frame)
 	CanOpen1.receiveFrame(frame);
 }
 
-CANOPEN::CANOPEN(int busNum)
+CANOPEN::CANOPEN(int whichbus)
 {
 	isMaster = false;
 	opState = BOOTUP;
 	nodeID = 0x5F;
+	busNum = whichbus;
+
 	if (busNum == 0)
 	{
 		bus = &Can0;
-		Can0.attachCANInterrupt(trampolineCAN0); //automatically route all frames through this library
 	}
 	else 
 	{
-		bus = &Can1;
-		Can1.attachCANInterrupt(trampolineCAN1);
+		bus = &Can1;		
 	}
 
 	for (int x = 0; x < MAX_DEVICES; x++)
@@ -84,6 +84,16 @@ void CANOPEN::begin(int speed = 250000, int id = 0x5F)
 		bus->watchFor(0, 0x7F); //Also allow through any message to ID 0 which is broadcast (allows all upper bit functions)
 		sendHeartbeat();
 	}
+
+  	if (busNum == 0)
+	{		
+		Can0.attachCANInterrupt(trampolineCAN0); //automatically route all frames through this library
+	}
+	else 
+	{
+		Can1.attachCANInterrupt(trampolineCAN1);
+	}
+
 	bInitialized = true;
 }
 
@@ -182,6 +192,7 @@ void CANOPEN::sendSDORequest(SDO_FRAME *sframe)
 void CANOPEN::receiveFrame(CAN_FRAME *frame)
 {
 	SDO_FRAME sframe;
+
 	if (frame->id == 0) //NMT message
 	{
 		if (frame->data.byte[1] != nodeID && frame->data.byte[1] != 0) return; //not for us.
@@ -203,7 +214,7 @@ void CANOPEN::receiveFrame(CAN_FRAME *frame)
 		sendStateChange(opState);
 	}
 	if (frame->id > 0x17F && frame->id < 0x580)
-	{
+	{		
 		sendGotPDOMsg(frame);
 	}
 	if (frame->id == 0x600 + nodeID) //SDO request targetted to our ID
