@@ -35,6 +35,7 @@ CANOPEN::CANOPEN(int whichbus)
 	opState = BOOTUP;
 	nodeID = 0x5F;
 	busNum = whichbus;
+	heartbeatInterval = 1000;
 
 	if (busNum == 0)
 	{
@@ -128,7 +129,8 @@ void CANOPEN::sendNMTMsg(int id, int cmd)
 	id &= 0x7F;
 	CAN_FRAME frame;
 	frame.id = 0;
-	frame.length = 8; //might want to set length to 2. Some specs seem to indicate this value
+	frame.extended = false;
+	frame.length = 2;
 	frame.data.byte[0] = cmd;
 	frame.data.byte[1] = id;
 	//the rest don't matter
@@ -142,6 +144,7 @@ void CANOPEN::sendPDOMessage(int id, int length, unsigned char *data)
 	if (length > 8 || length < 0) return; //invalid length
 	CAN_FRAME frame;
 	frame.id = id;
+	frame.extended = false;
 	frame.length = length;
 	for (int x = 0; x < length; x++) frame.data.byte[x] = data[x];
 	bus->sendFrame(frame);
@@ -371,6 +374,7 @@ void CANOPEN::sendHeartbeat()
 	CAN_FRAME frame;
 	frame.id = 0x700 + nodeID;
 	frame.length = 1;
+	frame.extended = false;
 	switch (opState)
 	{
 	case OPERATIONAL:
